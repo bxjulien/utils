@@ -46,7 +46,7 @@ const excludeKeywordsFromTitle = [
   'lead',
 ];
 
-const pages = [1, 2, 3];
+const pages = [1];
 
 async function scrapJobsWTTJ() {
   console.log(chalk.green('### START !'));
@@ -82,6 +82,16 @@ async function scrapJobsWTTJ() {
 
     await page.goto(jobLink);
 
+    await page.waitForSelector('h1');
+
+    const title = await page.evaluate(() => {
+      const title = document.querySelector('h1');
+      if (title) {
+        return title.innerText;
+      }
+      return '';
+    });
+
     const pageContent = await page.evaluate(() => {
       const relatedJobsDiv = document.querySelector(
         '[data-testid="job-section-related-jobs"]'
@@ -91,8 +101,6 @@ async function scrapJobsWTTJ() {
       }
       return document.documentElement.innerText;
     });
-
-    const title = await page.$eval('h1', (el) => el.innerText);
 
     const titleIsSafe = !excludeKeywordsFromTitle.some((word) =>
       title.toLowerCase().includes(word)
@@ -106,15 +114,15 @@ async function scrapJobsWTTJ() {
       .split(' ')
       .some((word) => keywords.includes(word.toLowerCase()));
 
-    if (titleHasKeywords || (titleIsSafe && pageContentHasKeywords)) {
-      const company = await page.$eval('h3', (el) => el.innerText);
+    const company = jobLink.split('/')[5];
 
+    if (titleHasKeywords || (titleIsSafe && pageContentHasKeywords)) {
       if (
         sentJobs.some((job) => job.title === title && job.company === company)
       ) {
         console.log(
           chalk.yellow(
-            `${indexIndication} - Job already sent: ${title} at ${company}`
+            `${indexIndication} - Job already sent: ${title}`
           )
         );
         continue;
@@ -123,13 +131,12 @@ async function scrapJobsWTTJ() {
       newJobs.push({ title, company, link: jobLink });
 
       console.log(
-        chalk.green(`${indexIndication} - Job found: ${title} at ${company}`)
+        chalk.green(`${indexIndication} - Job found: ${title}`)
       );
     } else {
       console.log(
         chalk.red(
-          `${indexIndication} - Job excluded: ${title}${
-            !titleIsSafe ? ' - Title is not safe' : ''
+          `${indexIndication} - Job excluded: ${title}${!titleIsSafe ? ' - Title is not safe' : ''
           }${!pageContentHasKeywords ? ' - No keywords found' : ''}`
         )
       );
@@ -161,9 +168,7 @@ async function scrapJobsWTTJ() {
     console.log('Sending new jobs to Telegram:', newJobs.length);
 
     for (const job of newJobs) {
-      const formattedMessage = `<a href="${he.encode(job.link)}"><b>${he.encode(
-        job.title
-      )}</b> at ${he.encode(job.company)}</a>`;
+      const formattedMessage = `<a href="${he.encode(job.link)}">${job.title}</a>`;
 
       bot.sendMessage(telegramUserId, formattedMessage, { parse_mode: 'HTML' });
     }
@@ -183,7 +188,7 @@ async function getSentJobs() {
     });
     return response.data?.record || [];
   } catch (error) {
-    console.error('Error fetching sent jobs:', error);
+    console.error('Error fetching sent jobs:', error.response?.data?.message);
     return [];
   }
 }
@@ -202,8 +207,7 @@ function getWTTJUrl(pageNb) {
   const url = new URL('https://www.welcometothejungle.com/fr/jobs');
 
   url.searchParams.set('refinementList[contract_type][]', 'FULL_TIME');
-  url.searchParams.set('refinementList[remote][]', 'no');
-  url.searchParams.append('refinementList[remote][]', 'partial');
+  //url.searchParams.set('refinementList[remote][]', 'no');
   url.searchParams.append('refinementList[remote][]', 'fulltime');
   url.searchParams.append(
     'refinementList[profession_name.fr.Tech][]',
